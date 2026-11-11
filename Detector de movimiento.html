@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detector de Movimiento y Cámara Web</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0b0f19',
+                        cardBg: '#131c31',
+                        cardBorder: '#1e293b',
+                        accentCyan: '#06b6d4',
+                        accentBlue: '#3b82f6',
+                        accentEmerald: '#10b981'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="min-h-screen w-screen flex flex-col bg-darkBg text-slate-100 overflow-x-hidden select-none">
+
+    <!-- Header Principal -->
+    <header class="border-b border-cardBorder bg-cardBg/90 backdrop-blur px-6 py-2.5 flex items-center justify-between shadow-lg shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid fa-camera-viewfinder text-white text-base"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 font-medium border border-cyan-500/30">Visión por Computador IA</span>
+                </h1>
+                <p class="text-[11px] text-slate-400">Detección Facial, Manos & Postura Corporal en Tiempo Real</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                <span class="text-slate-300 font-medium">Multidetección Activa</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 w-full max-w-4xl mx-auto px-4 py-4 flex flex-col space-y-3 justify-center items-stretch">
+
+        <!-- Tarjeta Cámara Web -->
+        <div class="bg-cardBg rounded-xl border border-cardBorder p-3 flex flex-col shadow-xl relative overflow-hidden">
+            <div class="flex items-center justify-end mb-2">
+                <span id="recBadge" class="text-[9px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-circle text-[6px]"></i> OFF
+                </span>
+            </div>
+            
+            <div class="relative w-full aspect-video bg-slate-950 rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center max-h-[480px]">
+                <video id="webcamFeed" autoplay playsinline muted class="w-full h-full object-cover transform -scale-x-100 opacity-80"></video>
+                <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                
+                <!-- Banner Principal en la Cámara -->
+                <div class="absolute top-2 inset-x-2 pointer-events-none flex justify-center">
+                    <div id="cameraStatusBanner" class="bg-slate-900/90 text-cyan-300 text-xs px-4 py-1.5 rounded-full border border-cyan-500/40 font-bold shadow-2xl backdrop-blur transition-all duration-300 flex items-center gap-2">
+                        <i id="bannerStatusIcon" class="fa-solid fa-video"></i>
+                        <span id="cameraStatusMsg">Encienda la cámara para iniciar la detección</span>
+                    </div>
+                </div>
+
+                <!-- Overlay ROI -->
+                <div class="absolute inset-0 border border-dashed border-cyan-500/30 rounded-lg pointer-events-none m-2 flex flex-col justify-between p-2 pt-10">
+                    <div class="flex justify-between text-[10px] text-cyan-400 font-mono bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                        <span id="handsDetectedInfo">[MANOS: 0 | ROSTRO: OK]</span>
+                        <span id="repCounterDisplay" class="text-emerald-400 font-extrabold text-xs">DETECTANDO MOVIMIENTO</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-2.5 flex items-center gap-2">
+                <button onclick="toggleWebcam()" id="webcamToggleBtn" class="flex-1 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-md">
+                    <i class="fa-solid fa-camera"></i> Activar Detección Óptica
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Lógica JavaScript de Detección Óptica -->
+    <script>
+        let currentExecutionState = 'WAITING';
+        let webcamActive = false;
+        let faceDetector = null;
+        let handDetector = null;
+        let poseDetector = null;
+        let poseResults = null;
+        let faceResults = null;
+        let handResults = null;
+        let detectorLoopRunning = false;
+        let lastDetectionTime = 0;
+
+        const bodyConnections = [
+            [11,12],                 // hombros
+            [11,13],[13,15],         // brazo izquierdo
+            [12,14],[14,16],         // brazo derecho
+            [11,23],[12,24],[23,24], // torso y cadera
+            [23,25],[25,27],[27,29],[29,31], // pierna izquierda y pie
+            [24,26],[26,28],[28,30],[30,32]  // pierna derecha y pie
+        ];
+
+        const handConnections = [
+            [0,1],[1,2],[2,3],[3,4],       // pulgar
+            [0,5],[5,6],[6,7],[7,8],       // índice
+            [5,9],[9,10],[10,11],[11,12],  // medio
+            [9,13],[13,14],[14,15],[15,16],// anular
+            [13,17],[17,18],[18,19],[19,20],[0,17] // meñique
+        ];
+
+        function countRaisedFingers(lm) {
+            let count = 0;
+            [[8,6],[12,10],[16,14],[20,18]].forEach(([tip, joint]) => {
+                if (lm[tip].y < lm[joint].y - 0.015) count++;
+            });
+            const thumbTip = lm[4], thumbIP = lm[3], thumbMCP = lm[2], indexMCP = lm[5], pinkyMCP = lm[17];
+            const palmWidth = Math.hypot(indexMCP.x - pinkyMCP.x, indexMCP.y - pinkyMCP.y);
+            const thumbExtension = Math.hypot(thumbTip.x - thumbMCP.x, thumbTip.y - thumbMCP.y);
+            const thumbJoint = Math.hypot(thumbIP.x - thumbMCP.x, thumbIP.y - thumbMCP.y);
+            if (palmWidth > 0 && thumbExtension > thumbJoint * 1.25 &&
+                Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y) > palmWidth * 0.45) count++;
+            return count;
+        }
+
+        function setupDetectors() {
+            if (poseDetector && faceDetector && handDetector) return;
+
+            if (typeof Pose === 'undefined' || typeof FaceDetection === 'undefined' || typeof Hands === 'undefined') {
+                throw new Error('Las librerías de MediaPipe aún se están cargando. Espere un momento e intente de nuevo.');
+            }
+
+            poseDetector = new Pose({
+                locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+            poseDetector.setOptions({
+                modelComplexity: 0,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            poseDetector.onResults(results => { poseResults = results; });
+
+            faceDetector = new FaceDetection({
+                locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
+            });
+            faceDetector.setOptions({ model: 'short', minDetectionConfidence: 0.5 });
+            faceDetector.onResults(results => { faceResults = results; });
+
+            handDetector = new Hands({
+                locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            handDetector.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 0,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.45
+            });
+            handDetector.onResults(results => { handResults = results; });
+        }
+
+        function drawOverlay() {
+            const video = document.getElementById('webcamFeed');
+            const canvas = document.getElementById('overlayCanvas');
+            const ctx = canvas.getContext('2d');
+            if (!video.videoWidth || !video.videoHeight) return;
+
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            }
+            const W = canvas.width, H = canvas.height;
+            ctx.clearRect(0, 0, W, H);
+
+            const mirrorX = x => (1 - x) * W;
+
+            let strokeColor = '#06b6d4';
+            let jointColor = '#38bdf8';
+
+            // 1. Detección Facial
+            const detections = faceResults?.detections || [];
+            detections.forEach(detection => {
+                const box = detection.boundingBox;
+                const originalX = box.xCenter - box.width / 2;
+                const y = (box.yCenter - box.height / 2) * H;
+                const w = box.width * W;
+                const h = box.height * H;
+                const x = W - (originalX * W) - w;
+                
+                ctx.strokeStyle = '#34d399';
+                ctx.lineWidth = Math.max(2, W * 0.004);
+                ctx.setLineDash([8, 6]);
+                ctx.strokeRect(x, y, w, h);
+                ctx.setLineDash([]);
+
+                const confidence = Math.round((detection.score?.[0] || 0.97) * 100);
+                ctx.font = `bold ${Math.max(12, W * 0.022)}px Arial`;
+                const label = `Rostro · ${confidence}%`;
+                const labelW = ctx.measureText(label).width + 18;
+                const labelX = Math.max(4, Math.min(W - labelW - 4, x));
+                const labelY = Math.max(3, y - 26);
+                ctx.fillStyle = '#34d399';
+                ctx.beginPath(); ctx.roundRect(labelX, labelY, labelW, 22, 6); ctx.fill();
+                ctx.fillStyle = '#052e2b';
+                ctx.fillText(label, labelX + 8, labelY + 15);
+            });
+
+            // 2. Esqueleto Corporal
+            const body = poseResults?.poseLandmarks;
+            if (body && body.length >= 33) {
+                const bodyPoint = i => ({ x: mirrorX(body[i].x), y: body[i].y * H, visibility: body[i].visibility ?? 1 });
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = Math.max(3.5, W * 0.006);
+                bodyConnections.forEach(([a,b]) => {
+                    const pa = bodyPoint(a), pb = bodyPoint(b);
+                    if (pa.visibility < 0.4 || pb.visibility < 0.4) return;
+                    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+                });
+
+                [11,12,13,14,15,16,23,24,25,26,27,28].forEach(i => {
+                    const pt = bodyPoint(i);
+                    if (pt.visibility < 0.4) return;
+                    ctx.beginPath(); ctx.arc(pt.x, pt.y, Math.max(4.5, W * 0.0075), 0, Math.PI * 2);
+                    ctx.fillStyle = jointColor; ctx.fill();
+                    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
+                });
+            }
+
+            // 3. Detección de Manos, Conteo de Dedos y Unión con el Brazo
+            const landmarksList = handResults?.multiHandLandmarks || [];
+            const handednessList = handResults?.multiHandedness || [];
+            
+            document.getElementById('handsDetectedInfo').innerText = `[MANOS: ${landmarksList.length} | ROSTRO: OK]`;
+            let totalFingersCount = 0;
+
+            landmarksList.forEach((landmarks, index) => {
+                const pointXY = point => ({ x: mirrorX(point.x), y: point.y * H });
+                ctx.lineWidth = Math.max(2, W * 0.0035);
+                ctx.strokeStyle = '#a78bfa';
+                handConnections.forEach(([a,b]) => {
+                    const pa = pointXY(landmarks[a]), pb = pointXY(landmarks[b]);
+                    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+                });
+
+                landmarks.forEach((point, pointIndex) => {
+                    const pos = pointXY(point);
+                    const fingertip = [4,8,12,16,20].includes(pointIndex);
+                    const radius = pointIndex === 0 || fingertip ? Math.max(4, W * 0.008) : Math.max(2, W * 0.0035);
+                    ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = pointIndex === 0 || fingertip ? '#a78bfa' : '#ffffff';
+                    ctx.fill();
+                    if (pointIndex === 0 || fingertip) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke(); }
+                });
+
+                // UNIÓN AUTOMÁTICA CON EL BRAZO
+                if (body && body.length >= 33) {
+                    const rawLabel = handednessList[index]?.label || 'Right';
+                    const wristPoseIdx = rawLabel === 'Left' ? 16 : 15; 
+                    const pWrist = { x: mirrorX(body[wristPoseIdx].x), y: body[wristPoseIdx].y * H };
+                    const handWrist = pointXY(landmarks[0]);
+                    
+                    const dist = Math.hypot(pWrist.x - handWrist.x, pWrist.y - handWrist.y);
+                    if (dist < W * 0.25) {
+                        ctx.beginPath();
+                        ctx.moveTo(pWrist.x, pWrist.y);
+                        ctx.lineTo(handWrist.x, handWrist.y);
+                        ctx.strokeStyle = '#06b6d4';
+                        ctx.lineWidth = Math.max(3.5, W * 0.006);
+                        ctx.stroke();
+                    }
+                }
+
+                const rawLabel = handednessList[index]?.label || 'Right';
+                const handLabel = rawLabel === 'Left' ? 'Derecha' : 'Izquierda';
+                const fingers = countRaisedFingers(landmarks);
+                totalFingersCount += fingers;
+
+                const wrist = pointXY(landmarks[0]);
+                const label = `${handLabel} · ${fingers} dedos`;
+                ctx.font = `bold ${Math.max(12, W * 0.022)}px Arial`;
+                const labelW = ctx.measureText(label).width + 18;
+                const labelX = Math.max(4, Math.min(W - labelW - 4, wrist.x - labelW / 2));
+                const labelY = Math.max(30, Math.min(H - 8, wrist.y + 24));
+                ctx.fillStyle = '#a78bfa';
+                ctx.beginPath(); ctx.roundRect(labelX, labelY, labelW, 22, 6); ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(label, labelX + 8, labelY + 15);
+            });
+        }
+
+        async function detectorLoop() {
+            if (!webcamActive || !detectorLoopRunning) return;
+            const video = document.getElementById('webcamFeed');
+            const now = performance.now();
+            
+            if (video.readyState >= 2 && now - lastDetectionTime > 75) {
+                lastDetectionTime = now;
+                try {
+                    if (poseDetector) await poseDetector.send({ image: video });
+                    if (faceDetector) await faceDetector.send({ image: video });
+                    if (handDetector) await handDetector.send({ image: video });
+                    drawOverlay();
+                } catch (error) {
+                    console.warn('Error en fotograma de detección:', error);
+                }
+            }
+            requestAnimationFrame(detectorLoop);
+        }
+
+        async function toggleWebcam() {
+            const video = document.getElementById('webcamFeed');
+            const statusMsg = document.getElementById('cameraStatusMsg');
+            const btn = document.getElementById('webcamToggleBtn');
+            const canvas = document.getElementById('overlayCanvas');
+            const recBadge = document.getElementById('recBadge');
+
+            if (!webcamActive) {
+                try {
+                    statusMsg.innerText = 'Inicializando IA de evaluación y manos...';
+                    setupDetectors();
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+                        audio: false
+                    });
+                    video.srcObject = stream;
+                    await video.play();
+                    webcamActive = true;
+                    detectorLoopRunning = true;
+                    
+                    recBadge.className = 'text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1';
+                    recBadge.innerHTML = '<i class="fa-solid fa-circle text-[6px] animate-pulse"></i> DETECTANDO';
+                    
+                    btn.innerHTML = '<i class="fa-solid fa-camera-slash"></i> Desactivar Cámara';
+                    btn.className = 'flex-1 py-2 bg-red-600/80 hover:bg-red-600 text-white font-medium rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-md';
+                    
+                    statusMsg.innerText = 'Detección activa en tiempo real';
+                    requestAnimationFrame(detectorLoop);
+                } catch (err) {
+                    console.error(err);
+                    statusMsg.innerText = err.message || 'No se pudo acceder a la cámara. Verifique los permisos.';
+                    webcamActive = false;
+                    detectorLoopRunning = false;
+                }
+            } else {
+                detectorLoopRunning = false;
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                    video.srcObject = null;
+                }
+                webcamActive = false;
+                poseResults = null;
+                faceResults = null;
+                handResults = null;
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                
+                recBadge.className = 'text-[9px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1';
+                recBadge.innerHTML = '<i class="fa-solid fa-circle text-[6px]"></i> OFF';
+
+                statusMsg.innerText = 'Encienda la cámara para iniciar la detección';
+                
+                btn.innerHTML = '<i class="fa-solid fa-camera"></i> Activar Detección Óptica';
+                btn.className = 'flex-1 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-md';
+            }
+        }
+    </script>
+</body>
+</html>
